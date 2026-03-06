@@ -3,7 +3,7 @@ import { groupByEmbedding } from '@/lib/group';
 
 const client = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
-async function analyzeImage(base64Image, mimeType = 'image/jpeg') {
+async function analyzeImage(base64Image) {
   const result = await client.responses.create({
     model: 'gpt-4.1-mini',
     input: [
@@ -16,7 +16,7 @@ async function analyzeImage(base64Image, mimeType = 'image/jpeg') {
           },
           {
             type: 'input_image',
-            image_url: `data:${mimeType};base64,${base64Image}`
+            image_url: `data:image/jpeg;base64,${base64Image}`
           }
         ]
       }
@@ -45,15 +45,10 @@ async function analyzeImage(base64Image, mimeType = 'image/jpeg') {
   return JSON.parse(result.output_text);
 }
 
-async function createImageEmbedding(base64Image, mimeType = 'image/jpeg') {
+async function createEmbedding(text) {
   const embedding = await client.embeddings.create({
-    model: 'multimodal-embedding-1',
-    input: [
-      {
-        type: 'input_image',
-        image_url: `data:${mimeType};base64,${base64Image}`
-      }
-    ]
+    model: 'text-embedding-3-small',
+    input: text
   });
 
   return embedding.data[0].embedding;
@@ -93,15 +88,12 @@ export async function POST(req) {
   for (const file of files) {
     const bytes = Buffer.from(await file.arrayBuffer());
     const base64 = bytes.toString('base64');
-    const mimeType = file.type || 'image/jpeg';
-
-    const [analysis, embedding] = await Promise.all([
-      analyzeImage(base64, mimeType),
-      createImageEmbedding(base64, mimeType)
-    ]);
+    const analysis = await analyzeImage(base64);
+    const embeddingText = [analysis.itemType, analysis.condition, ...analysis.keyDetails].join(' | ');
+    const embedding = await createEmbedding(embeddingText);
 
     analyses.push({
-      image: `data:${mimeType};base64,${base64}`,
+      image: `data:${file.type || 'image/jpeg'};base64,${base64}`,
       analysis,
       embedding
     });
